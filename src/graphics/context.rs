@@ -274,6 +274,34 @@ impl GraphicsContext {
         };
 
         let window = window_builder.build(event_loop)?;
+
+        #[allow(unused_results)]
+        #[cfg(target_arch = "wasm32")]
+        {
+            use winit::platform::web::WindowExtWebSys;
+            let bounds = window.inner_size();
+            web_sys::window()
+                .and_then(|win| win.document())
+                .and_then(|doc| {
+                    let dst = doc
+                        .get_element_by_id("canvas-dest")
+                        .expect("Couldn't find #canvas-dest");
+
+                    while let Some(ref child) = dst.first_child() {
+                        dst.remove_child(child).ok()?;
+                    }
+                    let canvas = web_sys::Element::from(window.canvas());
+                    dst.set_attribute(
+                        "style",
+                        &format!("width: {}px; height: {}px;", bounds.width, bounds.height),
+                    )
+                    .ok()?;
+                    dst.append_child(&canvas).ok()?;
+                    Some(())
+                })
+                .expect("Couldn't append canvas to document body.");
+        }
+
         let surface = unsafe { instance.create_surface(&window) }
             .map_err(|_| GameError::GraphicsInitializationError)?;
 
@@ -288,23 +316,32 @@ impl GraphicsContext {
         const MAX_INSTANCES: u32 = 1_000_000;
         const INSTANCE_BUFFER_SIZE: u32 = 96 * MAX_INSTANCES;
 
+        #[allow(unused_mut)]
+        let mut limits = wgpu::Limits {
+            // 1st: DrawParams
+            // 2nd: Texture + Sampler
+            // 3rd: InstanceArray
+            // 4th: ShaderParams
+            max_bind_groups: 4,
+            // InstanceArray uses 2 storage buffers.
+            max_storage_buffers_per_shader_stage: 2,
+            max_storage_buffer_binding_size: INSTANCE_BUFFER_SIZE,
+            max_texture_dimension_1d: 8192,
+            max_texture_dimension_2d: 8192,
+            ..wgpu::Limits::downlevel_webgl2_defaults()
+        };
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            limits.max_storage_buffer_binding_size = 0;
+            limits.max_storage_buffers_per_shader_stage = 0;
+        }
+
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 features: wgpu::Features::default(),
-                limits: wgpu::Limits {
-                    // 1st: DrawParams
-                    // 2nd: Texture + Sampler
-                    // 3rd: InstanceArray
-                    // 4th: ShaderParams
-                    max_bind_groups: 4,
-                    // InstanceArray uses 2 storage buffers.
-                    max_storage_buffers_per_shader_stage: 2,
-                    max_storage_buffer_binding_size: INSTANCE_BUFFER_SIZE,
-                    max_texture_dimension_1d: 8192,
-                    max_texture_dimension_2d: 8192,
-                    ..wgpu::Limits::downlevel_webgl2_defaults()
-                },
+                limits,
             },
             None,
         ))?;
@@ -426,12 +463,12 @@ impl GraphicsContext {
         let instance_bind_layout = BindGroupLayoutBuilder::new()
             .buffer(
                 wgpu::ShaderStages::VERTEX,
-                wgpu::BufferBindingType::Storage { read_only: true },
+                wgpu::BufferBindingType::Uniform,
                 false,
             )
             .buffer(
                 wgpu::ShaderStages::VERTEX,
-                wgpu::BufferBindingType::Storage { read_only: true },
+                wgpu::BufferBindingType::Uniform,
                 false,
             )
             .create(&wgpu.device, &mut bind_group_cache);

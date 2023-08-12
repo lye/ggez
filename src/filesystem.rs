@@ -145,7 +145,7 @@ impl Filesystem {
         resources_dir_name: &path::Path,
         resources_zip_name: &path::Path,
     ) -> GameResult<Filesystem> {
-        let mut root_path = env::current_exe()?;
+        let mut root_path = env::current_exe().unwrap_or_default();
 
         // Ditch the filename (if any)
         if root_path.file_name().is_some() {
@@ -157,17 +157,8 @@ impl Filesystem {
 
         let mut resources_path;
         let mut resources_zip_path;
-        let user_data_path;
-        let user_config_path;
-
-        let project_dirs = match ProjectDirs::from("", author, id) {
-            Some(dirs) => dirs,
-            None => {
-                return Err(GameError::FilesystemError(String::from(
-                    "No valid home directory path could be retrieved.",
-                )));
-            }
-        };
+        let mut user_data_path = Default::default();
+        let mut user_config_path = Default::default();
 
         // <game exe root>/resources/
         {
@@ -191,30 +182,32 @@ impl Filesystem {
             }
         }
 
-        // Per-user data dir,
-        // ~/.local/share/whatever/
-        {
-            user_data_path = project_dirs.data_local_dir();
-            trace!("User-local data path: {:?}", user_data_path);
-            let physfs = vfs::PhysicalFS::new(user_data_path, true);
-            overlay.push_back(Box::new(physfs));
-        }
+        if let Some(project_dirs) = ProjectDirs::from("", author, id) {
+            // Per-user data dir,
+            // ~/.local/share/whatever/
+            {
+                user_data_path = project_dirs.data_local_dir().to_path_buf();
+                trace!("User-local data path: {:?}", user_data_path);
+                let physfs = vfs::PhysicalFS::new(&user_data_path, true);
+                overlay.push_back(Box::new(physfs));
+            }
 
-        // Writeable local dir, ~/.config/whatever/
-        // Save game dir is read-write
-        {
-            user_config_path = project_dirs.config_dir();
-            trace!("User-local configuration path: {:?}", user_config_path);
-            let physfs = vfs::PhysicalFS::new(user_config_path, false);
-            overlay.push_back(Box::new(physfs));
+            // Writeable local dir, ~/.config/whatever/
+            // Save game dir is read-write
+            {
+                user_config_path = project_dirs.config_dir().to_path_buf();
+                trace!("User-local configuration path: {:?}", user_config_path);
+                let physfs = vfs::PhysicalFS::new(&user_config_path, false);
+                overlay.push_back(Box::new(physfs));
+            }
         }
 
         let fs = Filesystem {
             vfs: Arc::new(Mutex::new(overlay)),
             resources_dir: resources_path,
             zip_dir: resources_zip_path,
-            user_config_dir: user_config_path.to_path_buf(),
-            user_data_dir: user_data_path.to_path_buf(),
+            user_config_dir: user_config_path,
+            user_data_dir: user_data_path,
         };
 
         Ok(fs)

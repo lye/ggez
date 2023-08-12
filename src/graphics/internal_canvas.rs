@@ -523,12 +523,12 @@ impl<'a> InternalCanvas<'a> {
             let instance_layout = BindGroupLayoutBuilder::new()
                 .buffer(
                     wgpu::ShaderStages::VERTEX,
-                    wgpu::BufferBindingType::Storage { read_only: true },
+                    wgpu::BufferBindingType::Uniform,
                     false,
                 )
                 .buffer(
                     wgpu::ShaderStages::VERTEX,
-                    wgpu::BufferBindingType::Storage { read_only: true },
+                    wgpu::BufferBindingType::Uniform,
                     false,
                 )
                 .create(&self.wgpu.device, self.bind_group_cache);
